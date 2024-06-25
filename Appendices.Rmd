@@ -1,0 +1,138 @@
+---
+title: "Appendices"
+author: "Abigail Rieck"
+output: html_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r packages, include = FALSE}
+# Load any packages you may need here
+library(car)
+library(emmeans)
+library(tidyverse)
+library(stringr)
+```
+
+
+```{r readData, include = FALSE}
+# Save this template file in your final project's RStudio Project 
+# Edit this code chunk to read in your data
+
+games <- read.csv("games.csv")
+```
+
+***
+
+#### Figure 1.1: Histogram of Maximum Playtime
+
+```{r figure1_1, echo = FALSE}
+hist(games$maxplaytime,
+     xlab = "Maximum Playtime (minutes)",
+     main = "Histogram of Maximum Playtime")
+```
+
+***
+
+#### Figure 1.2: Histogram of Maximum Playtime with Log Transformation
+
+```{r figure1_2, echo=FALSE}
+hist(log(games$maxplaytime),
+     xlab = "log(Max Playtime in minutes)",
+     main = "Histogram of log(Max Playtime)")
+```
+
+***
+
+#### Figure 2: Histogram of Publishing Year
+
+```{r figure2, echo=FALSE}
+hist(games$yearpublished,
+     xlab = "Year Published",
+     main = "Histogram of Year Published")
+```
+
+***
+
+#### Figure 3: Boxplots of Average Rating by Category
+
+```{r figure3, echo = FALSE}
+ggplot(games) +
+  geom_boxplot(mapping = aes(category, average)) +
+  labs(title = "Boxplots of Game Ratings by Category", x = "Game Category", y = "Average Rating")
+```
+
+***
+
+#### Figure 4: Interaction Between Category & Age
+
+```{r figure 4, echo = FALSE}
+ggplot(games) +
+  geom_jitter(mapping = aes(x = age, y = average, color = category)) +
+  labs(x = "Game's Age (years)", y = "Average Rating", title = "Scatterplot of Age vs Rating by Category", color = "Category")
+```
+
+***
+
+#### Table 1: Summary of Model 1
+```{r table1, echo = FALSE}
+model1 <- lm(average ~ log(maxplaytime) + log(owned)+  age*category, data = games)
+summary(model1)
+```
+
+***
+
+#### Figure 5: Residuals vs. Fitted Values Plot For Model 1
+
+```{r figure5, echo = FALSE}
+plot(model1$fitted.values, model1$residuals,
+     main = "Residuals versus Fitted Values Plot \n for Model 1",
+     xlab = "Fitted Values",
+     ylab = "Residuals")
+
+abline(h = 0, col = "red", lty = 2)
+```
+
+***
+
+#### Figure 6.1: Residuals vs Fitted Values Plot for Model 2
+```{r figure6_1, echo = FALSE}
+model2 <- lm(average ~ log(maxplaytime) + log(owned) + age + I(age^2) + category, data = games)
+
+plot(model2$fitted.values, model2$residuals,
+     main = "Residuals versus Fitted Values Plot \n For Model 2",
+     xlab = "Fitted Values",
+     ylab = "Residuals")
+
+abline(h = 0, col = "red", lty = 2)
+```
+
+***
+
+#### Figure 6.2: QQ Plot for Model 2
+```{r figure6_2, echo = FALSE}
+
+qqnorm(model2$residuals, main = "QQ Plot of the Residuals")
+qqline(model2$residuals)
+
+```
+
+***
+
+#### Table 2: Summary of Final Model
+```{r table2, echo = FALSE}
+summary(model2)
+```
+
+***
+
+#### Table 3: VIFs for Final Model
+```{r table3, echo = FALSE}
+vif(model2)
+```
+
+
+

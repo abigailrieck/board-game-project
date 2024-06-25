@@ -1,0 +1,383 @@
+---
+title: "Project Work"
+author: "Abigail Rieck"
+date: "3/11/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(stringr)
+```
+
+```{r read in}
+ratings <- read_csv("ratings.csv") 
+details <- read_csv("details.csv")
+
+                          
+```
+### Data Cleaning
+
+Adding a chunk for some data cleaning- I want to combine the datasets, drop duplicated & unnecessary variables, and make a name length variable.
+
+I will also be using code posted to tidytuesday by Alyssa Goldberg (https://rpubs.com/thewiremonkey/476630) to filter out games that have more than one category, then filter to the top 10 categories. Although I would love to include more games and categories, this is the best solution I could find for ease of analysis.
+
+```{r data cleaning}
+#join datasets
+games <- left_join(details, ratings, by = "id")
+
+#drop duplicated and unnecessary variables
+games <- select(games, -`...1.x`, -`num.x`, -`...1.y`, -`num.y`, -name, -year)
+
+#rename title variable
+games <- games %>%
+  rename("title" = primary)
+
+#Create title length variable
+games <- games %>%
+  mutate(title_length = str_count(title))
+
+
+#count number of categories games are assigned to and store as variable count
+games$count <- unlist(lapply(str_split(games$boardgamecategory, ","), length))
+
+#filter for one category only
+single_cat <- games %>%
+  filter(count == 1)
+glimpse(unique(single_cat$boardgamecategory))
+#left with 4300 games and 74 categories
+
+#top five categories only
+top_cat <- single_cat %>%
+  filter(!is.na(boardgamecategory)) %>%
+  group_by(boardgamecategory) %>%
+  tally() %>%
+  top_n(5, n) %>%
+  arrange(desc(n))
+sum(top_cat$n)
+#still leaves us with over 2000 games to work with- plenty for the sake of this project
+
+games <- games %>%
+  filter(boardgamecategory %in% top_cat$boardgamecategory)
+
+#make category variable more readable
+games <- games %>%
+  mutate(category = str_replace_all(string = boardgamecategory, pattern = "\\[\\'(.+)\\'\\]", replacement = "\\1"))
+
+#reorder variables to make life easier
+games <- games %>%
+  select(title, title_length, category, yearpublished, minplaytime, maxplaytime, minplayers, maxplayers, minage, average, everything())
+
+#Note to self- I overrode the original games data to only have games in the top 5 categories. I may regret this later if I decide to compare games outside of those categories but oh well, at least it keeps my df name short. If I need to go back and use unfiltered stuff, everything before line 37 should be rerun.
+
+#write_csv(games, "games.csv")
+
+```
+## Project Work
+
+### Exploratory Analysis
+
+```{r read clean}
+games <- read.csv("games.csv")
+library(tidyverse)
+library(stringr)
+library(car)
+```
+
+```{r numericalSummaries}
+#Four variables from project checkpoint:
+summary(games$average)
+summary(games$maxplaytime)
+summary(games$minage)
+summary(games$title_length)
+
+
+
+```
+
+```{r histograms}
+##Project checkpoint variables:
+
+#Average rating
+hist(games$average,
+     xlab = "Average Rating",
+     main = "Histogram of Average Rating")
+
+#Max playtime
+hist(games$maxplaytime,
+     xlab = "Maximum Playtime (minutes)",
+     main = "Histogram of Maximum Playtime")
+#Log transformation appropriate:
+hist(log(games$maxplaytime),
+     xlab = "log(Max Playtime in minutes)",
+     main = "Histogram of log(Max Playtime)")
+
+#Minimum age
+hist(games$minage,
+     xlab = "Age (years)",
+     main = "Histogram of Minimum Age to Play")
+
+#Title length
+hist(games$title_length,
+     xlab = "Length of Title (characters)",
+     main = "Histogram of Title Length")
+#Log transformation appropriate:
+hist(log(games$title_length),
+     xlab = "log(Title Length in characters)",
+     main = "Histogram of log(Title Length)")
+
+
+
+```
+
+```{r scatterplotMatrix}
+#For initial model
+plot(games[,c(10, 6, 9, 2)])
+
+```
+
+```{r sideBySideBoxplot}
+#For category
+ggplot(games) +
+  geom_boxplot(mapping = aes(category, average)) +
+  labs(title = "Boxplots of Game Ratings by Category", x = "Game Category", y = "Average Rating")
+  
+
+```
+
+```{r intitialModel}
+lm_init <- lm(average ~ maxplaytime + minage + title_length + category, data = games)
+
+summary(lm_init)
+```
+## Model Improvement
+
+The model I originally build is definitely not doing much. For starters, I forgot to include the log transformations I identified, so I will do that. I also want to explore some other variables; min age doesn't have a lot of variability so it may be less interesting to look at. Year published could be fun though!
+
+```{r new variables 1}
+#First, scatterplots of transformed variables
+plot(average ~ log(maxplaytime), data = games)
+plot(average ~ log(title_length), data = games)
+
+#exploring year variable
+summary(games$yearpublished)
+hist(games$yearpublished)
+
+#very heavy left skew-- going to fix by changing to age!
+games <- games %>%
+  mutate(age = 2022 - yearpublished)
+hist(games$age)
+#much better! now with log transformation:
+hist(log(games$age))
+
+#write.csv(games, "games.csv")
+```
+To deal with the heavy left skew of the yearpublished variable, I've changed it to an age (in years, as of 2022) variable. I also overwrote my games.csv file again to include this.
+
+Now to make some more models with this and with the log transformed original variables
+
+First- I realized there are some problems with the log function because some of the data has 0s
+
+#### Exploring 0s in data
+
+```{r zeros}
+summary(games$maxplaytime)
+noplaytime <- filter(games, maxplaytime == 0)
+
+#filter out 0s
+games <- games %>%
+  filter(maxplaytime != 0)
+
+hist(games$maxplaytime)
+hist(log(games$maxplaytime))
+```
+There are 74 games with a max playtime of 0. I feel like I have to assume this is some kind of error in the way the data transferred over from the site, so i will be filtering these out.
+There's also some 0s in min age which probably should be considered NAs but I don't think I'll be including it in the model anyway so it should be fine
+
+```{r log and age models}
+#og variables with log transformations
+lm_init_log <- lm(average ~ log(maxplaytime) + minage + title_length + category, data = games)
+summary(lm_init_log)
+
+#min age to play and log trans for title length removed
+lm_noage <- lm(average ~ log(maxplaytime) + title_length + category, data = games)
+summary(lm_noage)
+
+#category removed
+lm_nocat <- lm(average ~ log(maxplaytime) + title_length + minage, data = games)
+summary(lm_nocat)
+
+#age of game added to og model, no title length
+lm_gameage1 <- lm(average ~ log(maxplaytime) + age + category, data = games)
+summary(lm_gameage1)
+
+#regular title length
+lm_gameage2 <- lm(average ~ log(maxplaytime) + age + title_length + category, data = games)
+summary(lm_gameage2)
+
+#log title length
+lm_gameage3 <- lm(average ~ log(maxplaytime) + age + log(title_length) + category, data = games)
+summary(lm_gameage3)
+```
+Both log transformations actually made the model slightly worse. Only transforming the playtime variable made it slightly better, so I dropped the log on title length.
+
+Based on the much lower adjusted R-squared values without playing age and category, it seems that those are both helpful predictors
+
+Game age seemed to help the model a lot, but in this version title length is no longer a significant predictor. Gonna make some scatterplots to see whats going on
+
+Game age 1 (no title): .2019
+2 (regular title): .2023, title p-value .146
+3 (log title):.2017, title p-value .2017
+
+Title without log transformation seemed to help the model a bit but had a low p value, doesnt seem worth it -- going with game age 1
+
+
+## Scatterplots part 2 electric boogaloo
+
+```{r scatterplots two}
+#Game age by category
+ggplot(games) +
+  geom_jitter(mapping = aes(x = age, y = average, color = category))
+
+#title length
+ggplot(games) +
+  geom_jitter(mapping = aes(x = log(title_length), y = average, color = category))
+
+#max playtime
+ggplot(games) +
+  geom_jitter(mapping = aes(x = log(maxplaytime), y = average, color = category))
+
+#plot matrix
+pairs( ~ average + log(maxplaytime) + log(owned) + age, data = games)
+
+```
+There does actually seem to be potential for an interaction between a game's age and category- makes sense that some may not age as well as others
+
+```{r interaction model}
+
+lm_interact <- lm(average ~ log(maxplaytime) + age*category, data = games)
+summary(lm_interact)
+
+
+```
+adj R squared jumped to .2146 compared to .2049 from the model without the interaction! also fairly significant differences between the categories. definitely worth keeping, but might want to cut out other variables to make it better
+
+### More new variables
+
+Noticed a variable for how many people own the game that could be interesting
+```{r new variables 2}
+summary(games$owned)
+hist(games$owned)
+#massive right skew lol
+hist(log(games$owned))
+#much better
+
+ggplot(games)+
+  geom_point(mapping = aes(x = log(owned), y = average))
+
+```
+Looks like a really strong relationship! which makes sense; good games should get more popular
+
+```{r owned and quadfit models}
+lm_owned <- lm(average ~ log(maxplaytime) + log(owned)+  age*category, data = games)
+summary(lm_owned)
+
+lm_quadfit <- lm(average ~ log(maxplaytime) + log(owned) + age + I(age^2) + category, data = games)
+summary(lm_quadfit)
+
+
+```
+Looking good! Adjusted R-squared is up to .2613. Still not great of course, but unless the diagnostics are bad, seems like a winner
+
+Speaking of...
+
+## Diagnostics
+
+```{r residuals plot for owned}
+plot(lm_owned$fitted.values, lm_owned$residuals,
+     main = "Residuals versus Fitted Values Plot \n for Games with a Linear Fit",
+     xlab = "Fitted Values",
+     ylab = "Residuals")
+
+abline(h = 0, col = "red", lty = 2)
+```
+
+Doesn't look great. going to scatterplot matrix a couple chunks above, it looks like there might actually be a bit of a quadratic relationship going on with log(owned), which seems way too complicated to try and fit. Let's try the model before, lm_interact
+
+```{r residuals for interact}
+plot(lm_interact$fitted.values, lm_interact$residuals,
+     main = "Residuals versus Fitted Values Plot \n for Games with a Linear Fit",
+     xlab = "Fitted Values",
+     ylab = "Residuals")
+
+abline(h = 0, col = "red", lty = 2)
+
+```
+Looks a little bit better but not great. Looking at the matrix again, it might make more sense to stick with log for owned and try a quadratic term for age. Only problem is I don't think I can still use my interaction term. Gonna make the model in the same chunk as owned and do residuals below.
+
+```{r residuals quadfit}
+plot(lm_quadfit$fitted.values, lm_quadfit$residuals,
+     main = "Residuals versus Fitted Values Plot",
+     xlab = "Fitted Values",
+     ylab = "Residuals")
+
+abline(h = 0, col = "red", lty = 2)
+
+
+```
+Much much better, AND the r-squared value went up! We have a new winner! Now QQ plot
+
+```{r qqplot quadfit}
+qqnorm(lm_quadfit$residuals, main = "QQ Plot of the Residuals")
+qqline(lm_quadfit$residuals)
+
+```
+Beautiful! Little wonky on the tails but otherwise looks good.
+
+### Multicollinearity & Overfitting
+```{r vif}
+vif(lm_quadfit)
+```
+
+No evidence of multicollinearity (low VIFs) or overfitting (no NAs in output, enough observations for predictors)
+
+## Model Comparison
+Including a chunk here to have the models I'm referencing as Model 1 and Model 2 in the report- these are the same as lm_owned and lm_quadfit (aka lm_final) above
+```{r models 1 and 2}
+
+#Model with interaction term
+model1 <- lm(average ~ log(maxplaytime) + log(owned)+  age*category, data = games)
+summary(model1)
+
+#Model with quadratic term
+model2 <- lm(average ~ log(maxplaytime) + log(owned) + age + I(age^2) + category, data = games)
+summary(model2)
+
+```
+
+
+## Final Model
+
+This is identical to the quadfit model above, just included here for easy access.
+
+```{r final model}
+lm_final <- lm(average ~ log(maxplaytime) + log(owned) + age + I(age^2) + category, data = games)
+summary(lm_final)
+
+```
+
+
+## Summary
+
+For the project report, I'll discuss that I played around with my original model quite a bit, looked at some variables, etc. I ultimately decided to get rid of title length bc the relationship wasn't significant even though it helped the r squared a bit. Added in age of the game (discuss transformations there too) and # of people owning it.
+Originally tried out interaction between age and category and it seemed really promising until I got to the diagnostics and realized something was messed up. Going back to look more closely at the plots, I realized a quadratic fit might be more appropriate for age. This both fixed the diagnostics and improved the adjusted R-squared!
+
+
+### Graphs to include
+
+-One histogram for a log transformation
+-Rating vs age by category scatterplot to discuss interaction term
+-Rating vs age plot without color to discuss quadratic fit
+-Residuals plot with and without quadratic fit as evidence to include it
+-QQ plot for final model
